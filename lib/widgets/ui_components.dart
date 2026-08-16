@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'app_colors.dart';
 
 class GlassBox extends StatelessWidget {
   final Widget child;
@@ -17,9 +18,9 @@ class GlassBox extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.12),
+            color: AppColors.cardSurface.withOpacity(0.85),
             borderRadius: BorderRadius.circular(borderRadius),
-            border: Border.all(color: Colors.white24),
+            border: Border.all(color: AppColors.cardBorder),
           ),
           child: child,
         ),

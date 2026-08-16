@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:percent_indicator/circular_percent_indicator.dart';
 import 'package:provider/provider.dart';
 import 'services/firebase_service.dart';
 import 'widgets/app_colors.dart';
@@ -44,246 +43,351 @@ class _HomePageState extends State<HomePage>
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        // CustomScrollView allows mixing scrollable elements like lists, grids, and boxes in a single view
-        slivers: [
-          SliverToBoxAdapter(
-            child: Container(
-              height: 450,
-              decoration: const BoxDecoration(
-                gradient: AppColors.deepWaterGradient,
-                borderRadius: BorderRadius.vertical(
-                  bottom: Radius.circular(50),
+      body: SafeArea(
+        child: StreamBuilder<Map<String, dynamic>>(
+          stream: firebase.tankStatusStream,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    CircularProgressIndicator(color: AppColors.primaryBlue),
+                    SizedBox(height: 20),
+                    Text(
+                      'Connecting to Tank...',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 18),
+                    ),
+                  ],
                 ),
-              ),
-              child: SafeArea(
-                child: StreamBuilder<Map<String, dynamic>>(
-                  stream: firebase.tankStatusStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const CircularProgressIndicator(color: Colors.white),
-                            const SizedBox(height: 20),
-                            const Text(
-                              'Connecting to Tank...',
-                              style: TextStyle(color: Colors.white, fontSize: 18),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                    
-                    if (snapshot.hasError) {
-                      debugPrint('STREAM ERROR: ${snapshot.error}');
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.error_outline, color: Colors.red, size: 48),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Connection Error\n${snapshot.error}',
-                                style: const TextStyle(color: Colors.white70),
-                                textAlign: TextAlign.center,
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
+              );
+            }
 
-                    final data = snapshot.data ?? {};
-                    final num levelNum = data['current_level_liters'] ?? 0;
-                    final int level = levelNum.toInt();
-                    // Percentage of water level. Supposing the tank is 1000 Liters, clamped between 0% and 100%.
-                    final double percent = (level / 1000).clamp(0.0, 1.0);
+            if (snapshot.hasError) {
+              debugPrint('STREAM ERROR: ${snapshot.error}');
+              return Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: AppColors.offline, size: 48),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Connection Error\n${snapshot.error}',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
 
-                    return SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 10,
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: const [
-                                    Text(
-                                      'Smart Tank',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 24,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    SizedBox(height: 4),
-                                    Text(
-                                      'Live Monitoring',
-                                      style: TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                IconButton(
-                                  onPressed: () => firebase.signOut(),
-                                  icon: const Icon(
-                                    Icons.logout,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
+            final data = snapshot.data ?? {};
+            final num levelNum = data['current_level_liters'] ?? 0;
+            final int level = levelNum.toInt();
+            // Tank capacity = 10 Liters (10000 ml)
+            final double percent = (level / 10).clamp(0.0, 1.0);
+            final int percentInt = (percent * 100).toInt();
+            final int emptyLiters = 10 - level;
+            final bool isOnline = data['is_filling'] == true || data['is_wasting'] == true || level > 0;
+
+            // UI-only conversion: display in milliliters (capacity = 10000 ml)
+            final int levelMl = (level * 1000) ~/ 10;
+            final int capacityMl = 10000;
+            final int emptyMl = emptyLiters * 1000;
+            final double intakeFlowMl = ((data['intakeFlow'] ?? 0.0) as num).toDouble() * 1000;
+
+            return SingleChildScrollView(
+              padding: const EdgeInsets.only(left: 20, right: 20, top: 16, bottom: 100),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: const [
+                          Text(
+                            'Smart Tank',
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-
-                          const SizedBox(height: 30),
-
-                          // Circular indicator widget representing the water tank status
-                          CircularPercentIndicator(
-                            radius: 120,
-                            lineWidth: 15,
-                            percent: percent,
-                            animation: true,
-                            animateFromLastPercent: true,
-                            circularStrokeCap: CircularStrokeCap.round,
-                            progressColor: AppColors.cyan,
-                            backgroundColor: Colors.white12,
-                            center: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                // AnimatedBuilder rebuilds only the wave widget on every animation tick
-                                AnimatedBuilder(
-                                  animation: _waveController,
-                                  builder: (context, child) {
-                                    return ClipOval(
-                                      child: CustomPaint(
-                                        size: const Size(200, 200),
-                                        // WaterWavePainter paints a custom sin-wave on the canvas to represent water level
-                                        painter: WaterWavePainter(
-                                          animationValue: _waveController.value,
-                                          color: AppColors.cyan.withOpacity(
-                                            0.4,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      '$level L',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 40,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      '${(percent * 100).toInt()}%',
-                                      style: const TextStyle(
-                                        color: Colors.white70,
-                                        fontSize: 20,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                          SizedBox(height: 4),
+                          Text(
+                            'Live Monitoring',
+                            style: TextStyle(
+                              color: AppColors.textSecondary,
+                              fontSize: 14,
                             ),
-                          ),
-
-                          const SizedBox(height: 40),
-
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _StatusIndicator(
-                                label: 'Filling',
-                                isActive: data['is_filling'] ?? false,
-                                activeColor: Colors.greenAccent,
-                              ),
-                              const SizedBox(width: 40),
-                              _StatusIndicator(
-                                label: 'Usage',
-                                isActive: data['is_wasting'] ?? false,
-                                activeColor: Colors.orangeAccent,
-                              ),
-                            ],
                           ),
                         ],
                       ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
-
-          // SliverPadding adds padding around sliver widgets inside CustomScrollView
-          SliverPadding(
-            padding: const EdgeInsets.all(24),
-            sliver: SliverToBoxAdapter(
-              child: StreamBuilder<Map<String, dynamic>>(
-                stream: firebase.tankStatusStream,
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: const Text(
-                        'Unable to load controls. Check Firebase rules and authentication.',
-                        style: TextStyle(color: AppColors.deepBlue),
-                        textAlign: TextAlign.center,
+                      IconButton(
+                        onPressed: () => firebase.signOut(),
+                        icon: const Icon(
+                          Icons.logout,
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                    );
-                  }
+                    ],
+                  ),
 
-                  final data =
-                      snapshot.data ??
-                      {'filling_valve': false, 'outgoing_valve': false};
+                  const SizedBox(height: 24),
 
-                  return SingleChildScrollView(
+                  // ── Water Level Card ──
+                  _DarkCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Title row with badge
+                        Row(
+                          children: [
+                            const Icon(Icons.water_drop, color: AppColors.primaryBlue, size: 20),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Water Level',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: AppColors.goodBadge),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                percentInt >= 50 ? 'GOOD' : percentInt >= 20 ? 'LOW' : 'CRITICAL',
+                                style: TextStyle(
+                                  color: percentInt >= 50
+                                      ? AppColors.goodBadge
+                                      : percentInt >= 20
+                                          ? Colors.orangeAccent
+                                          : AppColors.offline,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Water level visualization + stats
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Animated water fill box
+                            SizedBox(
+                              width: 130,
+                              height: 140,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Container(
+                                  color: const Color(0xFF0A1628),
+                                  child: Stack(
+                                    alignment: Alignment.bottomCenter,
+                                    children: [
+                                      // Water fill
+                                      AnimatedContainer(
+                                        duration: const Duration(milliseconds: 800),
+                                        curve: Curves.easeInOut,
+                                        height: 140 * percent,
+                                        decoration: const BoxDecoration(
+                                          gradient: AppColors.waterFillGradient,
+                                        ),
+                                      ),
+                                      // Wave overlay
+                                      Positioned(
+                                        bottom: (140 * percent) - 12,
+                                        left: 0,
+                                        right: 0,
+                                        child: AnimatedBuilder(
+                                          animation: _waveController,
+                                          builder: (context, child) {
+                                            return CustomPaint(
+                                              size: const Size(130, 24),
+                                              painter: WaterWavePainter(
+                                                animationValue: _waveController.value,
+                                                color: AppColors.cyan.withOpacity(0.3),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                      // Percentage text
+                                      Center(
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Text(
+                                              '$percentInt',
+                                              style: const TextStyle(
+                                                color: AppColors.textPrimary,
+                                                fontSize: 42,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const Text(
+                                              '%',
+                                              style: TextStyle(
+                                                color: AppColors.textSecondary,
+                                                fontSize: 18,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(width: 20),
+
+                            // Stats column
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _StatRow(label: 'Capacity', value: '$capacityMl ml'),
+                                  const SizedBox(height: 10),
+                                  _StatRow(label: 'Current', value: '$levelMl ml'),
+                                  const SizedBox(height: 16),
+                                  // Fill progress bar
+                                  const Text(
+                                    'Fill Progress',
+                                    style: TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: LinearProgressIndicator(
+                                      value: percent,
+                                      minHeight: 6,
+                                      backgroundColor: const Color(0xFF1A2744),
+                                      valueColor: const AlwaysStoppedAnimation<Color>(
+                                        AppColors.primaryBlue,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Footer: last updated + online/offline
+                        Row(
+                          children: [
+                            Icon(Icons.access_time, color: AppColors.textMuted, size: 14),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Last updated: ${isOnline ? "Just now" : "Waiting for hardware..."}',
+                                style: const TextStyle(
+                                  color: AppColors.textMuted,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: isOnline ? AppColors.online : AppColors.offline,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              isOnline ? 'Online' : 'Offline',
+                              style: TextStyle(
+                                color: isOnline ? AppColors.online : AppColors.offline,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ── Sensor Readings Card ──
+                  _InfoCard(
+                    title: 'Intake Flow',
+                    value: '${intakeFlowMl.toStringAsFixed(0)} ml/min',
+                    icon: Icons.speed,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ── Pump Control Card ──
+                  _DarkCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Sensor Readings',
+                          'Pump Control',
                           style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.deepBlue,
+                            color: AppColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        const SizedBox(height: 16),
-                        _InfoCard(
-                          title: 'Intake Flow',
-                          value: '${(data['intakeFlow'] ?? 0.0).toStringAsFixed(1)} L/min',
-                          icon: Icons.speed,
+                        const SizedBox(height: 4),
+                        Divider(color: AppColors.cardBorder, height: 24),
+
+                        // Solenoid Valves header
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryBlue.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.water_drop,
+                                color: AppColors.primaryBlue,
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                              'Solenoid Valves',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
 
-                        const SizedBox(height: 32),
+                        const SizedBox(height: 20),
 
-                        const Text(
-                          'Quick Controls',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.deepBlue,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Switch control card for the Inlet Valve (water pump)
+                        // Inlet Valve (Input Valve)
                         _ControlCard(
                           title: 'Inlet Valve',
                           subtitle: 'Pumping water to tank',
@@ -302,9 +406,9 @@ class _HomePageState extends State<HomePage>
                           },
                         ),
 
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
 
-                        // Switch control card for the Outlet Valve (water distribution)
+                        // Outlet Valve (Output Valve)
                         _ControlCard(
                           title: 'Outlet Valve',
                           subtitle: 'Water usage control',
@@ -322,17 +426,89 @@ class _HomePageState extends State<HomePage>
                             }
                           },
                         ),
-
-                        const SizedBox(height: 100), // bottom spacing so items aren't cut off by the navigation bar
                       ],
                     ),
-                  );
-                },
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Status indicators
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _StatusIndicator(
+                        label: 'Filling',
+                        isActive: data['is_filling'] ?? false,
+                        activeColor: Colors.greenAccent,
+                      ),
+                      const SizedBox(width: 40),
+                      _StatusIndicator(
+                        label: 'Usage',
+                        isActive: data['is_wasting'] ?? false,
+                        activeColor: Colors.orangeAccent,
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 24),
+                ],
               ),
-            ),
-          ),
-        ],
+            );
+          },
+        ),
       ),
+    );
+  }
+}
+
+/// A row showing a label and bold value (e.g., "Capacity  1000 L")
+class _StatRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _StatRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 13,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dark themed card container
+class _DarkCard extends StatelessWidget {
+  final Widget child;
+
+  const _DarkCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardSurface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.cardBorder),
+      ),
+      child: child,
     );
   }
 }
@@ -359,7 +535,7 @@ class _StatusIndicator extends StatelessWidget {
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             // Glowing color if active, gray if inactive
-            color: isActive ? activeColor : Colors.white24,
+            color: isActive ? activeColor : AppColors.textMuted,
             boxShadow: isActive
                 ? [
                     BoxShadow(
@@ -375,7 +551,7 @@ class _StatusIndicator extends StatelessWidget {
         Text(
           label,
           style: const TextStyle(
-            color: Colors.white,
+            color: AppColors.textPrimary,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -424,55 +600,43 @@ class _ControlCardState extends State<_ControlCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: AppColors.background,
-            child: Icon(widget.icon, color: AppColors.primaryBlue),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontSize: 15,
+                  color: AppColors.textPrimary,
                 ),
-                Text(
-                  widget.subtitle,
-                  style: const TextStyle(color: Colors.grey, fontSize: 12),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _localValue ? 'Open' : 'Closed',
+                style: TextStyle(
+                  color: _localValue ? AppColors.online : AppColors.textMuted,
+                  fontSize: 12,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Switch(
-            value: _localValue,
-            onChanged: (val) {
-              setState(() => _localValue = val);
-              widget.onChanged(val);
-            },
-            activeColor: AppColors.primaryBlue,
-            inactiveTrackColor: Colors.grey.shade200,
-          ),
-        ],
-      ),
+        ),
+        Switch(
+          value: _localValue,
+          onChanged: (val) {
+            setState(() => _localValue = val);
+            widget.onChanged(val);
+          },
+          activeColor: AppColors.primaryBlue,
+          activeTrackColor: AppColors.primaryBlue.withOpacity(0.4),
+          inactiveThumbColor: AppColors.textMuted,
+          inactiveTrackColor: const Color(0xFF1A2744),
+        ),
+      ],
     );
   }
 }
@@ -494,33 +658,38 @@ class _InfoCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: AppColors.cardSurface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.cardBorder),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Icon(icon, color: AppColors.primaryBlue),
-          const SizedBox(height: 8),
-          Text(
-            title,
-            style: const TextStyle(color: Colors.grey, fontSize: 12),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-              color: AppColors.deepBlue,
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.primaryBlue.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
             ),
+            child: Icon(icon, color: AppColors.primaryBlue, size: 22),
+          ),
+          const SizedBox(width: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -38,7 +38,13 @@ class _LoginPageState extends State<LoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(gradient: AppColors.deepWaterGradient),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF070D1F), Color(0xFF0B1026)],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+          ),
+        ),
         child: SafeArea(
           child: Column(
             children: [
@@ -48,13 +54,13 @@ class _LoginPageState extends State<LoginPage> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: AppColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 10),
               const Text(
                 'Who is using the app today?',
-                style: TextStyle(fontSize: 16, color: Colors.white70),
+                style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 40),
               Expanded(
@@ -62,7 +68,9 @@ class _LoginPageState extends State<LoginPage> {
                   future: _usersFuture,
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const Center(
+                        child: CircularProgressIndicator(color: AppColors.primaryBlue),
+                      );
                     }
                     
                     if (snapshot.hasError) {
@@ -74,12 +82,16 @@ class _LoginPageState extends State<LoginPage> {
                             children: [
                               Text(
                                 'Error loading users: ${snapshot.error}',
-                                style: const TextStyle(color: Colors.white70),
+                                style: const TextStyle(color: AppColors.textSecondary),
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 16),
                               ElevatedButton(
                                 onPressed: _refreshUsers,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primaryBlue,
+                                  foregroundColor: AppColors.textPrimary,
+                                ),
                                 child: const Text('Retry'),
                               ),
                             ],
@@ -96,20 +108,20 @@ class _LoginPageState extends State<LoginPage> {
                           padding: const EdgeInsets.symmetric(horizontal: 24),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Text(
+                            children: const [
+                              Text(
                                 'No users',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: AppColors.textPrimary,
                                   fontSize: 22,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
-                              const SizedBox(height: 12),
-                              const Text(
+                              SizedBox(height: 12),
+                              Text(
                                 'Tap "Add New Family Member" below to create an account.',
                                 style: TextStyle(
-                                  color: Colors.white70,
+                                  color: AppColors.textSecondary,
                                   fontSize: 14,
                                 ),
                                 textAlign: TextAlign.center,
@@ -149,10 +161,10 @@ class _LoginPageState extends State<LoginPage> {
                               children: [
                                 CircleAvatar(
                                   radius: 30,
-                                  backgroundColor: AppColors.primaryBlue,
+                                  backgroundColor: AppColors.primaryBlue.withOpacity(0.2),
                                   child: Icon(
                                     _getIconForRole(user['role']),
-                                    color: Colors.white,
+                                    color: AppColors.primaryBlue,
                                     size: 30,
                                   ),
                                 ),
@@ -160,7 +172,7 @@ class _LoginPageState extends State<LoginPage> {
                                 Text(
                                   user['role'] ?? 'User',
                                   style: const TextStyle(
-                                    color: Colors.white,
+                                    color: AppColors.textPrimary,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),

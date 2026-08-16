@@ -142,12 +142,25 @@ class FirebaseService extends ChangeNotifier {
             ? json.decode(sensorResponse.body)
             : {};
 
+        // Calculate live water level from base_tank_level + session changes
+        double baseLevel = ((deviceData['base_tank_level'] ?? 0) as num).toDouble();
+        double liveLevel = baseLevel;
+
+        if (deviceData['is_filling'] == true) {
+          // While filling: show base + current session intake (same sensor as filling history)
+          double currentIntake = ((sensorData['intakeFlow'] ?? 0.0) as num).toDouble();
+          double sessionIntake = currentIntake - _lastOpenedFilling;
+          if (sessionIntake > 0) liveLevel = baseLevel + sessionIntake;
+        } else if (deviceData['is_wasting'] == true) {
+          // While draining: show base - current session output (same sensor as usage history)
+          double currentOutput = ((sensorData['dailyUsage'] ?? 0.0) as num).toDouble();
+          double sessionOutput = currentOutput - _lastOpenedUsage;
+          if (sessionOutput > 0) liveLevel = baseLevel - sessionOutput;
+        }
+        if (liveLevel < 0) liveLevel = 0;
+
         return {
-          // Map dailyUsage from Arduino sensor directly to current_level_liters
-          'current_level_liters':
-              sensorData['dailyUsage'] ??
-              deviceData['current_level_liters'] ??
-              0,
+          'current_level_liters': liveLevel,
           'intakeFlow': sensorData['intakeFlow'] ?? 0.0,
           'is_filling': deviceData['is_filling'] == true,
           'is_wasting': deviceData['is_wasting'] == true,
@@ -363,6 +376,11 @@ class FirebaseService extends ChangeNotifier {
     });
   }
 
+
+
+  double _lastOpenedUsage = 0.0;    // Baseline for outlet sensor
+  double _lastOpenedFilling = 0.0;  // Baseline for inlet sensor
+
   /// Updates the valve state in Firebase using HTTP REST API (bypasses blocked WebSocket).
   /// - Flutter UI reads from: /device_control/filling_valve, /device_control/outgoing_valve
   /// - Arduino reads from:    /valveControl/input, /valveControl/output
@@ -381,6 +399,17 @@ class FirebaseService extends ChangeNotifier {
           uiUpdates['outgoing_valve'] = false;
           uiUpdates['is_wasting'] = false;
           arduinoUpdates['output'] = false;
+
+          // Record the inlet sensor baseline when filling valve OPENS
+          try {
+            final sensorResp = await http.get(Uri.parse('$_dbUrl/sensorData.json'));
+            if (sensorResp.statusCode == 200 && sensorResp.body != 'null') {
+              final sensorData = json.decode(sensorResp.body);
+              _lastOpenedFilling = (sensorData['intakeFlow'] ?? 0.0).toDouble();
+            }
+          } catch (e) {
+            debugPrint('Failed to fetch inlet baseline: $e');
+          }
         }
       } else if (key == 'outgoing_valve') {
         uiUpdates['outgoing_valve'] = value;
@@ -390,6 +419,17 @@ class FirebaseService extends ChangeNotifier {
           uiUpdates['filling_valve'] = false;
           uiUpdates['is_filling'] = false;
           arduinoUpdates['input'] = false;
+
+          // Record the outlet sensor baseline when usage valve OPENS
+          try {
+            final sensorResp = await http.get(Uri.parse('$_dbUrl/sensorData.json'));
+            if (sensorResp.statusCode == 200 && sensorResp.body != 'null') {
+              final sensorData = json.decode(sensorResp.body);
+              _lastOpenedUsage = (sensorData['dailyUsage'] ?? 0.0).toDouble();
+            }
+          } catch (e) {
+            debugPrint('Failed to fetch outlet baseline: $e');
+          }
         }
       }
 
@@ -406,7 +446,7 @@ class FirebaseService extends ChangeNotifier {
           ),
         ];
 
-        // If a valve is being turned off, log it in history by fetching current dailyUsage
+        // If a valve is being turned off, log it in history
         if (value == false) {
           try {
             final sensorResp = await http.get(
@@ -414,28 +454,68 @@ class FirebaseService extends ChangeNotifier {
             );
             if (sensorResp.statusCode == 200 && sensorResp.body != 'null') {
               final sensorData = json.decode(sensorResp.body);
-              final double amount = (sensorData['dailyUsage'] ?? 0.0)
-                  .toDouble();
 
               final timestamp = DateTime.now().millisecondsSinceEpoch;
               if (key == 'filling_valve') {
+                // Use INLET sensor (intakeFlow) for filling history
+                final double currentIntake = (sensorData['intakeFlow'] ?? 0.0).toDouble();
+                double sessionFilled = currentIntake - _lastOpenedFilling;
+                if (sessionFilled < 0 || _lastOpenedFilling == 0.0) {
+                  sessionFilled = currentIntake;
+                }
+
                 futures.add(
                   http.post(
                     Uri.parse('$_dbUrl/history/filling.json'),
                     body: json.encode({
                       'timestamp': timestamp,
-                      'liters_filled': amount,
+                      'liters_filled': sessionFilled,
                     }),
                   ),
                 );
+
+                // Update base_tank_level in DB: add what was filled
+                final deviceResp = await http.get(Uri.parse('$_dbUrl/device_control/base_tank_level.json'));
+                double currentBase = 0.0;
+                if (deviceResp.statusCode == 200 && deviceResp.body != 'null') {
+                  currentBase = (json.decode(deviceResp.body) as num).toDouble();
+                }
+                futures.add(
+                  http.put(
+                    Uri.parse('$_dbUrl/device_control/base_tank_level.json'),
+                    body: json.encode(currentBase + sessionFilled),
+                  ),
+                );
               } else if (key == 'outgoing_valve') {
+                // Use OUTLET sensor (dailyUsage) for usage history
+                final double currentOutput = (sensorData['dailyUsage'] ?? 0.0).toDouble();
+                double sessionUsage = currentOutput - _lastOpenedUsage;
+                if (sessionUsage < 0 || _lastOpenedUsage == 0.0) {
+                  sessionUsage = currentOutput;
+                }
+
                 futures.add(
                   http.post(
                     Uri.parse('$_dbUrl/history/wastage.json'),
                     body: json.encode({
                       'timestamp': timestamp,
-                      'liters_wasted': amount,
+                      'liters_wasted': sessionUsage,
                     }),
+                  ),
+                );
+
+                // Update base_tank_level in DB: subtract what was used
+                final deviceResp = await http.get(Uri.parse('$_dbUrl/device_control/base_tank_level.json'));
+                double currentBase = 0.0;
+                if (deviceResp.statusCode == 200 && deviceResp.body != 'null') {
+                  currentBase = (json.decode(deviceResp.body) as num).toDouble();
+                }
+                double newBase = currentBase - sessionUsage;
+                if (newBase < 0) newBase = 0;
+                futures.add(
+                  http.put(
+                    Uri.parse('$_dbUrl/device_control/base_tank_level.json'),
+                    body: json.encode(newBase),
                   ),
                 );
               }
